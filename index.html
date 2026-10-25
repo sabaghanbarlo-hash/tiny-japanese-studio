@@ -63,7 +63,11 @@ $('test').onclick=async()=>{const k=clean($('tok').value);sset('tj_tok',k);const
   o.textContent='Key length '+k.length+', starts with '+k.slice(0,11)+'... checking';
   if(!k.startsWith('github_pat_')&&!k.startsWith('ghp_')){o.textContent='This does not look like a GitHub key. It should start with github_pat_ (you pasted something starting with '+k.slice(0,6)+'). Copy the key again right after pressing Generate token.';return}
   try{await gh('/user');}catch(e){o.textContent='GitHub rejects this key ('+e.message+'). Make a new key and copy it immediately.';return}
-  try{await gh(`/repos/${OWNER}/${REPO}`);await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml`);o.textContent='Key works. You can upload now.'}catch(e){o.textContent='The key is valid but cannot reach the lesson repo ('+e.message+'). Check Repository access and the Contents and Actions permissions.'}}; if(!$('tok').value) $('setupd').open=true;
+  try{await gh(`/repos/${OWNER}/${REPO}`);await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml`);o.textContent='Reading works. Testing a small write...';
+    const tp='uploads/test-'+Date.now().toString(36)+'.txt';
+    const w=await gh(`/repos/${OWNER}/${REPO}/contents/${tp}`,{method:'PUT',body:JSON.stringify({message:'key test',content:btoa('ok')})});
+    await gh(`/repos/${OWNER}/${REPO}/contents/${tp}`,{method:'DELETE',body:JSON.stringify({message:'key test cleanup',sha:w.content.sha})});
+    o.textContent='Key works for reading AND writing. If the real upload still fails, the clip file is the problem (size '+(file?(file.size/1048576).toFixed(1)+' MB':'not chosen yet')+').'}catch(e){o.textContent='The key is valid but cannot reach the lesson repo ('+e.message+'). Check Repository access and the Contents and Actions permissions.'}}; if(!$('tok').value) $('setupd').open=true;
 $('tok').onchange=()=>sset('tj_tok',clean($('tok').value));
 let file=null;
 $('drop').onclick=()=>$('file').click();
