@@ -75,7 +75,8 @@ $('test').onclick=async()=>{const k=clean($('tok').value);sset('tj_tok',k);const
       }catch(e){res.push(kb+' KB: FAILED '+e.message.replace(/\(key.*/,''))}
       o.textContent='Write test: '+res.join(' | ');
     }
-}}; if(!$('tok').value) $('setupd').open=true;
+  }catch(e){o.textContent='Test stopped: '+e.message}};
+if(!$('tok').value) $('setupd').open=true;
 $('tok').onchange=()=>sset('tj_tok',clean($('tok').value));
 let file=null;
 $('drop').onclick=()=>$('file').click();
