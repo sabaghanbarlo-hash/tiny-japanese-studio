@@ -32,7 +32,7 @@ ol{padding-left:20px;margin:8px 0}
 <li>Name it <b>studio</b>. Repository access: <b>Only select repositories</b> then <b>tiny-japanese-lessons</b>.</li>
 <li>Repository permissions: set <b>Contents</b>, <b>Actions</b> to <b>Read and write</b>. (Metadata read is automatic.)</li>
 <li>Generate, copy the token, paste it below. It stays only in this browser.</li></ol>
-<label>Your key</label><input id="tok" type="password" placeholder="github_pat_..." autocomplete="off">
+<label>Your key</label><input id="tok" type="text" name="tj-key-field" placeholder="github_pat_..." autocomplete="off" autocapitalize="off" spellcheck="false"><button id="test" type="button" style="background:var(--ye);color:#2b2230">Test my key</button><div class="log" id="tres"></div>
 </details></div>
 
 <div class="card" id="form">
@@ -55,9 +55,16 @@ ol{padding-left:20px;margin:8px 0}
 <script>
 const OWNER='sabaghanbarlo-hash',REPO='tiny-japanese-lessons',API='https://api.github.com';
 const $=id=>document.getElementById(id);
+const clean=v=>(v||'').replace(/bearer/ig,'').replace(/[\s"'`]/g,'');
 const sget=k=>{try{return localStorage.getItem(k)||''}catch(e){return ''}},sset=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-$('tok').value=sget('tj_tok'); if(!$('tok').value) $('setupd').open=true;
-$('tok').onchange=()=>sset('tj_tok',$('tok').value.trim());
+$('tok').value=sget('tj_tok');
+$('test').onclick=async()=>{const k=clean($('tok').value);sset('tj_tok',k);const o=$('tres');
+  if(!k){o.textContent='The box is empty.';return}
+  o.textContent='Key length '+k.length+', starts with '+k.slice(0,11)+'... checking';
+  if(!k.startsWith('github_pat_')&&!k.startsWith('ghp_')){o.textContent='This does not look like a GitHub key. It should start with github_pat_ (you pasted something starting with '+k.slice(0,6)+'). Copy the key again right after pressing Generate token.';return}
+  try{await gh('/user');}catch(e){o.textContent='GitHub rejects this key ('+e.message+'). Make a new key and copy it immediately.';return}
+  try{await gh(`/repos/${OWNER}/${REPO}`);await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml`);o.textContent='Key works. You can upload now.'}catch(e){o.textContent='The key is valid but cannot reach the lesson repo ('+e.message+'). Check Repository access and the Contents and Actions permissions.'}}; if(!$('tok').value) $('setupd').open=true;
+$('tok').onchange=()=>sset('tj_tok',clean($('tok').value));
 let file=null;
 $('drop').onclick=()=>$('file').click();
 $('file').onchange=e=>{file=e.target.files[0];$('fname').textContent=file?file.name+' ('+(file.size/1048576).toFixed(1)+' MB)':''};
@@ -70,7 +77,7 @@ function b64(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=(
 function step(t,p,l){$('stage').textContent=t;$('pb').style.width=p+'%';if(l!==undefined)$('log').textContent=l}
 function fail(e){$('stage').textContent='Something went wrong';$('stage').className='err';$('log').textContent=e.message||e;$('go').disabled=false}
 $('go').onclick=async()=>{
-  sset('tj_tok',$('tok').value.trim());
+  sset('tj_tok',clean($('tok').value));
   if(!sget('tj_tok')){$('setupd').open=true;return alert('Paste your key in the one-time setup first.')}
   if(!file)return alert('Choose a clip first.');
   if(file.size>75*1048576)return alert('That file is over 75 MB. Please trim it to 3 minutes or less / compress it first.');
