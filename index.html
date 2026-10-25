@@ -106,12 +106,32 @@ $('go').onclick=async()=>{
     step('Uploading your clip',5,'');
     const id=Date.now().toString(36);
     const dir='uploads/clip-'+id;
-    const CH=3*1048576, n=Math.max(1,Math.ceil(file.size/CH));
-    for(let i=0;i<n;i++){
-      step('Uploading your clip ('+(i+1)+' of '+n+')',5+Math.round(i/n*10),'');
-      const part=file.slice(i*CH,Math.min(file.size,(i+1)*CH));
-      await gh(`/repos/${OWNER}/${REPO}/contents/${dir}/part-${String(i).padStart(3,'0')}`,{method:'PUT',body:JSON.stringify({message:'upload clip part',content:await b64(part)})});
+    const CH=300*1024, n=Math.max(1,Math.ceil(file.size/CH));
+    const shas=new Array(n);let doneN=0,next=0;
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    async function worker(){
+      while(next<n){
+        const i=next++;
+        const part=file.slice(i*CH,Math.min(file.size,(i+1)*CH));
+        const content=await b64(part);
+        let lastErr=null;
+        for(let t=0;t<5;t++){
+          try{const b=await gh(`/repos/${OWNER}/${REPO}/git/blobs`,{method:'POST',body:JSON.stringify({content,encoding:'base64'})});shas[i]=b.sha;lastErr=null;break}
+          catch(e){lastErr=e;await sleep(1500*(t+1))}
+        }
+        if(lastErr)throw lastErr;
+        doneN++;step('Uploading your clip ('+Math.round(doneN/n*100)+'%)',5+Math.round(doneN/n*10),'');
+      }
     }
+    step('Uploading your clip (0%)',5,'');
+    await Promise.all([worker(),worker(),worker()]);
+    step('Saving your clip',15,'');
+    const ref=await gh(`/repos/${OWNER}/${REPO}/git/ref/heads/main`);
+    const parent=ref.object.sha;
+    const pc=await gh(`/repos/${OWNER}/${REPO}/git/commits/${parent}`);
+    const tree=await gh(`/repos/${OWNER}/${REPO}/git/trees`,{method:'POST',body:JSON.stringify({base_tree:pc.tree.sha,tree:shas.map((s,i)=>({path:dir+'/part-'+String(i).padStart(4,'0'),mode:'100644',type:'blob',sha:s}))})});
+    const cm=await gh(`/repos/${OWNER}/${REPO}/git/commits`,{method:'POST',body:JSON.stringify({message:'upload clip',tree:tree.sha,parents:[parent]})});
+    await gh(`/repos/${OWNER}/${REPO}/git/refs/heads/main`,{method:'PATCH',body:JSON.stringify({sha:cm.sha})});
     const path=dir;
     step('Starting the build',15,'');
     await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml/dispatches`,{method:'POST',body:JSON.stringify({ref:'main',inputs:{clip_url:'repo:'+path,title:$('title').value.trim(),number:$('num').value.trim()||'1',reference:$('ref').value.trim(),job_id:id}})});
