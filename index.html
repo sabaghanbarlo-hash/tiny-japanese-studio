@@ -63,18 +63,25 @@ $('test').onclick=async()=>{const k=clean($('tok').value);sset('tj_tok',k);const
   o.textContent='Key length '+k.length+', starts with '+k.slice(0,11)+'... checking';
   if(!k.startsWith('github_pat_')&&!k.startsWith('ghp_')){o.textContent='This does not look like a GitHub key. It should start with github_pat_ (you pasted something starting with '+k.slice(0,6)+'). Copy the key again right after pressing Generate token.';return}
   try{await gh('/user');}catch(e){o.textContent='GitHub rejects this key ('+e.message+'). Make a new key and copy it immediately.';return}
-  try{await gh(`/repos/${OWNER}/${REPO}`);await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml`);o.textContent='Reading works. Testing writes of growing size...';
-    const sizes=[1,100,500,1000,3000],res=[];
-    for(const kb of sizes){
-      const tp='uploads/test-'+kb+'-'+Date.now().toString(36)+'.bin';
-      const bytes=new Uint8Array(kb*1024);for(let q=0;q<bytes.length;q+=65536)crypto.getRandomValues(bytes.subarray(q,Math.min(q+65536,bytes.length)));
-      let s='';for(let q=0;q<bytes.length;q+=32768)s+=String.fromCharCode.apply(null,bytes.subarray(q,q+32768));
-      try{const w=await gh(`/repos/${OWNER}/${REPO}/contents/${tp}`,{method:'PUT',body:JSON.stringify({message:'size test',content:btoa(s)})});
-        res.push(kb+' KB: ok');
-        await gh(`/repos/${OWNER}/${REPO}/contents/${tp}`,{method:'DELETE',body:JSON.stringify({message:'size test cleanup',sha:w.content.sha})});
-      }catch(e){res.push(kb+' KB: FAILED '+e.message.replace(/\(key.*/,''))}
-      o.textContent='Write test: '+res.join(' | ');
+  try{await gh(`/repos/${OWNER}/${REPO}`);await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml`);o.textContent='Reading works. Testing other upload routes...';
+    const res=[];const show=()=>{o.textContent='Tests: '+res.join(' | ')};
+    const mk=kb=>{const bytes=new Uint8Array(kb*1024);for(let q=0;q<bytes.length;q+=65536)crypto.getRandomValues(bytes.subarray(q,Math.min(q+65536,bytes.length)));return bytes};
+    const short=e=>e.message.replace(/\(key.*/,'').replace(/^\[[^\]]*\] /,'');
+    for(const kb of [500,3000]){
+      try{const bytes=mk(kb);let s='';for(let q=0;q<bytes.length;q+=32768)s+=String.fromCharCode.apply(null,bytes.subarray(q,q+32768));
+        await gh(`/repos/${OWNER}/${REPO}/git/blobs`,{method:'POST',body:JSON.stringify({content:btoa(s),encoding:'base64'})});res.push('blob '+kb+'KB ok')}
+      catch(e){res.push('blob '+kb+'KB FAILED '+short(e))}
+      show();
     }
+    let rel=null;
+    try{
+      rel=await gh(`/repos/${OWNER}/${REPO}/releases`,{method:'POST',body:JSON.stringify({tag_name:'tmp-'+Date.now().toString(36),name:'tmp',draft:true})});
+      const bytes=mk(3000);
+      const up=await fetch(rel.upload_url.replace('{?name,label}','')+'?name=t.bin',{method:'POST',headers:{Authorization:'Bearer '+sget('tj_tok'),'Content-Type':'application/octet-stream'},body:bytes});
+      res.push('release-asset 3000KB '+(up.ok?'ok':'FAILED '+up.status));
+    }catch(e){res.push('release-asset FAILED '+short(e))}
+    try{if(rel)await gh(`/repos/${OWNER}/${REPO}/releases/${rel.id}`,{method:'DELETE'})}catch(e){}
+    show();
   }catch(e){o.textContent='Test stopped: '+e.message}};
 if(!$('tok').value) $('setupd').open=true;
 $('tok').onchange=()=>sset('tj_tok',clean($('tok').value));
