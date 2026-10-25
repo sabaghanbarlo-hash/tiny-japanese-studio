@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tiny Japanese Studio</title>
+<style>
+:root{--bg:#fff7ef;--card:#fff;--ink:#2b2230;--mut:#7a6d80;--pk:#ff6b8b;--ye:#ffd166;--ln:#f0e1d6}
+@media(prefers-color-scheme:dark){:root{--bg:#1d1822;--card:#2a2331;--ink:#f6eef7;--mut:#b3a6b8;--ln:#3c3345}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:28px;margin:8px 0 4px}h1 span{color:var(--pk)}
+p.s{color:var(--mut);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:16px;padding:18px;margin-bottom:16px}
+label{display:block;font-weight:600;margin:12px 0 4px}small{color:var(--mut);font-weight:400}
+input,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:90px}
+.drop{border:2px dashed var(--pk);border-radius:14px;padding:22px;text-align:center;cursor:pointer;background:var(--bg)}
+.drop b{color:var(--pk)}
+button{background:var(--pk);color:#fff;border:0;border-radius:12px;padding:12px 20px;font:inherit;font-weight:700;cursor:pointer;width:100%;margin-top:16px}
+button:disabled{opacity:.5;cursor:default}
+a.dl{display:block;text-align:center;background:var(--ye);color:#2b2230;text-decoration:none;border-radius:12px;padding:12px;font-weight:700;margin-top:10px}
+.bar{height:10px;background:var(--ln);border-radius:9px;overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;width:0;background:var(--pk);transition:width .4s}
+.log{color:var(--mut);font-size:14px}.err{color:#d6324f;font-weight:600}
+details summary{cursor:pointer;font-weight:600}
+ol{padding-left:20px;margin:8px 0}
+</style></head><body><main>
+<h1>Tiny <span>Japanese</span> Studio</h1>
+<p class="s">Upload a short anime clip (up to 3 minutes). Get back a finished lesson video: clip with subtitles, vocabulary, grammar and a quiz.</p>
+
+<div class="card" id="setup">
+<details id="setupd"><summary>One-time setup (your private key)</summary>
+<ol>
+<li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub: new fine-grained token</a>.</li>
+<li>Name it <b>studio</b>. Repository access: <b>Only select repositories</b> then <b>tiny-japanese-lessons</b>.</li>
+<li>Repository permissions: set <b>Contents</b>, <b>Actions</b> to <b>Read and write</b>. (Metadata read is automatic.)</li>
+<li>Generate, copy the token, paste it below. It stays only in this browser.</li></ol>
+<label>Your key</label><input id="tok" type="password" placeholder="github_pat_..." autocomplete="off">
+</details></div>
+
+<div class="card" id="form">
+<div class="drop" id="drop"><div><b>Tap to choose your clip</b><br><small id="fname">mp4, mov or mkv, best under 60 MB</small></div></div>
+<input id="file" type="file" accept="video/*,.mkv" hidden>
+<label>Lesson title <small>(optional)</small></label><input id="title" placeholder="A School Morning">
+<label>Lesson number</label><input id="num" value="1" inputmode="numeric">
+<label>English translation of the clip <small>(optional, makes the lesson much more accurate)</small></label>
+<textarea id="ref" placeholder="Paste what is said, in English, line by line"></textarea>
+<button id="go">Make my lesson video</button>
+</div>
+
+<div class="card" id="prog" hidden>
+<b id="stage">Starting</b><div class="bar"><i id="pb"></i></div>
+<div class="log" id="log"></div>
+<div id="out"></div>
+</div>
+<p class="log">Only use clips you have the right to use. Videos take about 20 to 40 minutes to build; you can close this page and come back, it remembers the last job.</p>
+</main>
+<script>
+const OWNER='sabaghanbarlo-hash',REPO='tiny-japanese-lessons',API='https://api.github.com';
+const $=id=>document.getElementById(id);
+const sget=k=>{try{return localStorage.getItem(k)||''}catch(e){return ''}},sset=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+$('tok').value=sget('tj_tok'); if(!$('tok').value) $('setupd').open=true;
+$('tok').onchange=()=>sset('tj_tok',$('tok').value.trim());
+let file=null;
+$('drop').onclick=()=>$('file').click();
+$('file').onchange=e=>{file=e.target.files[0];$('fname').textContent=file?file.name+' ('+(file.size/1048576).toFixed(1)+' MB)':''};
+async function gh(path,opt={}){
+  const r=await fetch(API+path,{...opt,headers:{Authorization:'Bearer '+sget('tj_tok'),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(opt.headers||{})}});
+  if(!r.ok){let t='';try{t=(await r.json()).message}catch(e){} throw new Error('GitHub said '+r.status+': '+t)}
+  return r.status===204?null:r.json();
+}
+function b64(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=no;r.readAsDataURL(f)})}
+function step(t,p,l){$('stage').textContent=t;$('pb').style.width=p+'%';if(l!==undefined)$('log').textContent=l}
+function fail(e){$('stage').textContent='Something went wrong';$('stage').className='err';$('log').textContent=e.message||e;$('go').disabled=false}
+$('go').onclick=async()=>{
+  sset('tj_tok',$('tok').value.trim());
+  if(!sget('tj_tok')){$('setupd').open=true;return alert('Paste your key in the one-time setup first.')}
+  if(!file)return alert('Choose a clip first.');
+  if(file.size>75*1048576)return alert('That file is over 75 MB. Please trim it to 3 minutes or less / compress it first.');
+  $('go').disabled=true;$('prog').hidden=false;$('out').innerHTML='';$('stage').className='';
+  try{
+    step('Uploading your clip',5,'');
+    const id=Date.now().toString(36);
+    const ext=(file.name.split('.').pop()||'mp4').replace(/[^a-z0-9]/gi,'').toLowerCase()||'mp4';
+    const path='uploads/clip-'+id+'.'+ext;
+    await gh(`/repos/${OWNER}/${REPO}/contents/${path}`,{method:'PUT',body:JSON.stringify({message:'upload clip',content:await b64(file)})});
+    step('Starting the build',15,'');
+    await gh(`/repos/${OWNER}/${REPO}/actions/workflows/lesson.yml/dispatches`,{method:'POST',body:JSON.stringify({ref:'main',inputs:{clip_url:'repo:'+path,title:$('title').value.trim(),number:$('num').value.trim()||'1',reference:$('ref').value.trim(),job_id:id}})});
+    sset('tj_job',id);
+    watch(id);
+  }catch(e){fail(e)}
+};
+const STEPS=['Install tools','Read request','Fetch clip','Analyse clip and write the lesson','Build the video','Publish'];
+async function watch(id){
+  $('prog').hidden=false;$('go').disabled=true;
+  let run=null;
+  for(;;){
+    try{
+      if(!run){const l=await gh(`/repos/${OWNER}/${REPO}/actions/runs?event=workflow_dispatch&per_page=15`);run=l.workflow_runs.find(r=>(r.display_title||r.name||'').includes('lesson '+id))||null}
+      if(run){
+        run=await gh(`/repos/${OWNER}/${REPO}/actions/runs/${run.id}`);
+        const j=(await gh(`/repos/${OWNER}/${REPO}/actions/runs/${run.id}/jobs`)).jobs[0];
+        let cur=j&&j.steps.find(s=>s.status==='in_progress');
+        const idx=cur?STEPS.indexOf(cur.name):-1;
+        const labels={'Analyse clip and write the lesson':'Listening to the clip and writing the lesson','Build the video':'Building the video','Fetch clip':'Reading your clip','Install tools':'Getting ready','Publish':'Finishing up'};
+        step(cur?(labels[cur.name]||cur.name):'Waiting for a worker',cur?Math.max(20,Math.round((idx+1)/STEPS.length*95)):18,'Run '+run.id+' - this can take 20 to 40 minutes');
+        if(run.status==='completed'){
+          if(run.conclusion==='success'){await done(run);}else{fail(new Error('The build failed. Open this log to see why: '+run.html_url))}
+          return;
+        }
+      }else step('Waiting for a worker',18,'');
+    }catch(e){$('log').textContent='Checking again... ('+e.message+')'}
+    await new Promise(r=>setTimeout(r,20000));
+  }
+}
+async function done(run){
+  step('Your lesson is ready',100,'');
+  const rel=await gh(`/repos/${OWNER}/${REPO}/releases/tags/lesson-${run.id}`);
+  const out=$('out');out.innerHTML='';
+  for(const a of rel.assets){
+    const b=document.createElement('a');b.className='dl';b.href='#';b.textContent='Download '+a.name+' ('+(a.size/1048576).toFixed(1)+' MB)';
+    b.onclick=async ev=>{ev.preventDefault();b.textContent='Downloading '+a.name+'...';
+      try{const r=await fetch(`${API}/repos/${OWNER}/${REPO}/releases/assets/${a.id}`,{headers:{Authorization:'Bearer '+sget('tj_tok'),Accept:'application/octet-stream'}});
+        if(!r.ok)throw 0;const u=URL.createObjectURL(await r.blob());const x=document.createElement('a');x.href=u;x.download=a.name;x.click();b.textContent='Download '+a.name+' again'}
+      catch(e){b.textContent='Open the release page instead';window.open(rel.html_url,'_blank')}};
+    out.appendChild(b);
+  }
+  $('go').disabled=false;
+}
+const last=sget('tj_job');if(last&&sget('tj_tok'))watch(last);
+</script></body></html>
