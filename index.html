@@ -70,7 +70,7 @@ $('drop').onclick=()=>$('file').click();
 $('file').onchange=e=>{file=e.target.files[0];$('fname').textContent=file?file.name+' ('+(file.size/1048576).toFixed(1)+' MB)':''};
 async function gh(path,opt={}){
   const r=await fetch(API+path,{...opt,headers:{Authorization:'Bearer '+sget('tj_tok'),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(opt.headers||{})}});
-  if(!r.ok){let t='';try{t=(await r.json()).message}catch(e){} throw new Error('GitHub said '+r.status+': '+t)}
+  if(!r.ok){let t='';try{t=(await r.json()).message}catch(e){} throw new Error('['+(opt.method||'GET')+' '+path.split('?')[0].replace(/^\/repos\/[^/]+\/[^/]+/,'')+'] GitHub said '+r.status+': '+t+' (key length '+sget('tj_tok').length+')')}
   return r.status===204?null:r.json();
 }
 function b64(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=no;r.readAsDataURL(f)})}
